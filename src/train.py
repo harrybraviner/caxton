@@ -48,6 +48,9 @@ model = ParametersClassifier(
     transfer=False,
 )
 
+param_count = sum(p.numel() for p in model.parameters())
+print(f'Number of model parameters: {param_count}')
+
 data = ParametersDataModule(
     batch_size=BATCH_SIZE,
     data_dir=DATA_DIR,
@@ -59,11 +62,10 @@ data = ParametersDataModule(
 
 trainer = pl.Trainer(
     num_nodes=NUM_NODES,
-    gpus=NUM_GPUS,
-    distributed_backend=ACCELERATOR,
+    devices=NUM_GPUS,
+    strategy="ddp_find_unused_parameters_true",
     max_epochs=args.epochs,
     logger=tb_logger,
-    weights_summary=None,
     precision=16,
     callbacks=[checkpoint_callback],
 )

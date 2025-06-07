@@ -3,6 +3,8 @@ import torch.nn.functional as F
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+import model.res_net
 from model.residual_attention_network import (
     ResidualAttentionModel_56 as ResidualAttentionModel,
 )
@@ -27,11 +29,21 @@ class ParametersClassifier(pl.LightningModule):
         super().__init__()
         self.lr = lr
         self.__dict__.update(locals())
-        self.attention_model = ResidualAttentionModel(
-            retrieve_layers=retrieve_layers, retrieve_masks=retrieve_masks
+        # self.attention_model = ResidualAttentionModel(
+        #     retrieve_layers=retrieve_layers, retrieve_masks=retrieve_masks
+        # )
+        # num_ftrs = self.attention_model.fc.in_features
+        # self.attention_model.fc = nn.Identity()
+        self.resnet_model = model.res_net.ResNet(
+            make_block=model.res_net.ResidualBlock,
+            layer_sizes=[3, 4, 6, 3],
         )
-        num_ftrs = self.attention_model.fc.in_features
-        self.attention_model.fc = nn.Identity()
+        out_dim = 224  # Input dim
+        out_dim //= 2**4  # There are 4 stride=2 convolutions that half the dimension.
+        out_dim //= 2  # Maxpool operation halves the dimension.
+        #out_dim -= 6  # Unpadded average-pool (took this out)
+        num_ftrs = out_dim ** 2
+        num_ftrs *= 512  # Channels
         self.fc1 = nn.Linear(num_ftrs, num_classes)
         self.fc2 = nn.Linear(num_ftrs, num_classes)
         self.fc3 = nn.Linear(num_ftrs, num_classes)
@@ -55,7 +67,7 @@ class ParametersClassifier(pl.LightningModule):
         self.val_acc3 = MulticlassAccuracy(num_classes=3)
         self.test_acc = MulticlassAccuracy(num_classes=3)
 
-        self.name = "ResidualAttentionClassifier"
+        self.name = "ResNetClassifier"
         self.retrieve_layers = retrieve_layers
         self.retrieve_masks = retrieve_masks
         self.gpus = gpus
@@ -63,13 +75,13 @@ class ParametersClassifier(pl.LightningModule):
         self.test_overwrite_filename = test_overwrite_filename
 
     def forward(self, X):
-        X = self.attention_model(X)
-        if self.retrieve_layers or self.retrieve_masks:
-            out1 = self.fc1(X[0])
-            out2 = self.fc2(X[0])
-            out3 = self.fc3(X[0])
-            out4 = self.fc4(X[0])
-            return (out1, out2, out3, out4), X
+        X = self.resnet_model(X)
+        # if self.retrieve_layers or self.retrieve_masks:
+        #     out1 = self.fc1(X[0])
+        #     out2 = self.fc2(X[0])
+        #     out3 = self.fc3(X[0])
+        #     out4 = self.fc4(X[0])
+        #     return (out1, out2, out3, out4), X
         out1 = self.fc1(X)
         out2 = self.fc2(X)
         out3 = self.fc3(X)
